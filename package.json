@@ -1,0 +1,21 @@
+{
+  "name": "server_sfu",
+  "version": "1.0.0",
+  "description": "Video Conferance Application",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Payam Vahdatnia",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.20.2",
+    "domexception": "^1.0.1",
+    "express": "^4.18.2",
+    "http": "^0.0.1-security",
+    "node-pre-gyp": "^0.17.0",
+    "nodemon": "^3.0.3",
+    "socket.io": "^4.7.4",
+    "wrtc": "^0.4.7"
+  }
+}

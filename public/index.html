@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Conference Client</title>
+</head>
+<body>
+    <video id="user-video" autoplay muted></video>
+
+    <div id="remote-video-container"></div>
+
+    <div>
+        <input type="text" id="message-input" placeholder="Enter message">
+        <button id="send-message-button">Send Message</button>
+    </div>
+    <ul id="chat-messages"></ul>
+
+    <div>
+        <input type="file" id="file-input">
+        <button id="send-file-button">Send File</button>
+    </div>
+    <ul id="file-list"></ul>
+
+    <button id="start-recording-button">Start Recording</button>
+    <button id="stop-recording-button" disabled>Stop Recording</button>
+
+    <div id="invitation-container">
+        <input type="text" id="invite-user-input" placeholder="Enter user ID">
+        <button id="send-invitation-button">Send Invitation</button>
+    </div>
+
+    <!-- Add button to toggle microphone -->
+    <button id="toggle-microphone-button">Toggle Microphone</button>
+
+    <script src="https://cdn.socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const userVideo = document.getElementById('user-video');
+        const remoteVideoContainer = document.getElementById('remote-video-container');
+        const statusDiv = document.getElementById('status');
+        const messageInput = document.getElementById('message-input');
+        const sendMessageButton = document.getElementById('send-message-button');
+        const chatMessages = document.getElementById('chat-messages');
+        const fileInput = document.getElementById('file-input');
+        const sendFileButton = document.getElementById('send-file-button');
+        const fileList = document.getElementById('file-list');
+        const startRecordingButton = document.getElementById('start-recording-button');
+        const stopRecordingButton = document.getElementById('stop-recording-button');
+        const invitationContainer = document.getElementById('invitation-container');
+        const inviteUserInput = document.getElementById('invite-user-input');
+        const sendInvitationButton = document.getElementById('send-invitation-button');
+
+        // Add event listener for toggling the microphone
+        const toggleMicrophoneButton = document.getElementById('toggle-microphone-button');
+        let isMicrophoneOn = true;
+        toggleMicrophoneButton.addEventListener('click', () => {
+            if (isMicrophoneOn) {
+                // Turn off the microphone
+                turnOffMicrophone();
+            } else {
+                // Turn on the microphone
+                turnOnMicrophone();
+            }
+            isMicrophoneOn = !isMicrophoneOn; // Toggle the state
+        });
+
+        function turnOffMicrophone() {
+            const stream = userVideo.srcObject;
+            stream.getAudioTracks().forEach(track => track.enabled = false);
+        }
+
+        function turnOnMicrophone() {
+            const stream = userVideo.srcObject;
+            stream.getAudioTracks().forEach(track => track.enabled = true);
+        }
+
+        // Function to send ICE candidate to the remote peer
+function sendICECandidate(candidate) {
+    // Replace 'ws://localhost:8080' with the URL of your WebSocket server
+    const socket = new WebSocket('ws://localhost:8080');
+    
+    // Wait for the WebSocket connection to open
+    socket.onopen = function(event) {
+        // Prepare the ICE candidate message
+        const message = {
+            type: 'ice_candidate',
+            candidate: candidate
+        };
+
+        // Send the ICE candidate message to the remote peer
+        socket.send(JSON.stringify(message));
+    };
+
+    // Log any errors that occur with the WebSocket connection
+    socket.onerror = function(error) {
+        console.error('WebSocket error:', error);
+    };
+}
+
+ sendMessageButton.addEventListener('click', () => {
+            const message = messageInput.value.trim();
+            if (message !== '') {
+                socket.emit('send_message', message);
+                messageInput.value = '';
+            }
+        });
+
+        socket.on('receive_message', (message) => {
+            const li = document.createElement('li');
+            li.textContent = message;
+            chatMessages.appendChild(li);
+        });
+
+        sendFileButton.addEventListener('click', () => {
+            const file = fileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const fileData = {
+                        name: file.name,
+                        data: e.target.result,
+                    };
+                    socket.emit('send_file', fileData);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        socket.on('receive_file', (fileInfo) => {
+            const li = document.createElement('li');
+            const link = document.createElement('a');
+            link.textContent = fileInfo.name;
+            link.href = fileInfo.path;
+            link.download = fileInfo.name;
+            li.appendChild(link);
+            fileList.appendChild(li);
+        });
+
+        startRecordingButton.addEventListener('click', () => {
+            socket.emit('start_recording');
+        });
+
+        socket.on('recording_started', () => {
+            console.log('Recording started');
+            startRecordingButton.disabled = true;
+            stopRecordingButton.disabled = false;
+        });
+
+        stopRecordingButton.addEventListener('click', () => {
+            socket.emit('stop_recording');
+        });
+
+        socket.on('recording_stopped', () => {
+            console.log('Recording stopped');
+            startRecordingButton.disabled = false;
+            stopRecordingButton.disabled = true;
+        });
+
+        // Activate microphone when the page loads
+        window.onload = async () => {
+            await activateMicrophone('user-id');
+        };
+
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                console.log('Local stream received');
+                userVideo.srcObject = stream;
+                socket.emit('send_video_stream', stream);
+            })
+            .catch(error => {
+                console.error('Error accessing media devices:', error);
+            });
+
+        socket.on('new_video_stream', (streamId) => {
+            console.log('New video stream received from server');
+            const newVideo = document.createElement('video');
+            newVideo.srcObject = streamId;
+            remoteVideoContainer.appendChild(newVideo);
+        });
+
+        sendInvitationButton.addEventListener('click', () => {
+            const userId = inviteUserInput.value.trim();
+            if (userId !== '') {
+                socket.emit('send_invitation', userId);
+                inviteUserInput.value = '';
+            }
+        });
+
+        socket.on('receive_invitation', (invitation) => {
+            const invitationElement = document.createElement('div');
+            invitationElement.textContent = invitation;
+            invitationContainer.appendChild(invitationElement);
+        });
+
+        // Define the activateMicrophone function here
+        async function activateMicrophone(userId) {
+            const configuration = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' } // Example STUN server
+                ]
+            };
+
+            const peerConnection = createPeerConnection(configuration);
+
+            // Add local audio track to the peer connection
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+            // Create offer and set local description
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            // Send the offer to the other peer
+            sendOfferToServer(offer, userId);
+        }
+
+        // Function to handle incoming audio streams from remote peers
+        function handleIncomingAudioStream(stream) {
+            // Play the incoming audio stream
+            const audioElement = new Audio();
+            audioElement.srcObject = stream;
+            audioElement.play();
+        }
+
+        // Function to handle incoming offers from remote peers
+        async function handleIncomingOffer(offer, userId) {
+            // Create a new RTCPeerConnection
+            const peerConnection = createPeerConnection(configuration);
+
+            // Add event listener for ICE candidates
+            peerConnection.addEventListener('icecandidate', (event) => {
+                if (event.candidate) {
+                    // Send ICE candidate to the other peer
+                }
+            });
+
+            // Set remote description from the offer
+            await peerConnection.setRemoteDescription(offer);
+
+            // Create answer
+            const answer = await peerConnection.createAnswer();
+
+            // Set local description for the answer
+            await peerConnection.setLocalDescription(answer);
+
+            // Send answer to the client
+            sendAnswerToClient(answer, userId);
+
+            // Add event listener for incoming audio streams
+            peerConnection.addEventListener('track', (event) => {
+                if (event.track.kind === 'audio') {
+                    handleIncomingAudioStream(event.streams[0]);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
